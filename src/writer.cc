@@ -17,6 +17,8 @@
 
 #define MAX_FILENAME_LENGTH 100
 
+#define WRITE_INTERVAL_USEC = 100*1000 
+
 /// PRIVATE DECLARATIONS
 
 int64_t timespec_subtract (const struct timespec *x, const struct timespec *y);
@@ -38,17 +40,6 @@ MATFileInfo sigFile;
 
 Signal sig;
 
-// return the difference in time x - y in nanoseconds
-#define BILLION 1000000000
-int64_t timespec_subtract (const struct timespec *x, const struct timespec *y)
-{
-
-    int64_t xnsec = x->tv_nsec * BILLION + x->tv_sec;
-    int64_t ynsec = y->tv_nsec * BILLION + y->tv_sec;
-
-    return xnsec - ynsec;
-} 
-    
 void updateSigFile() {
     // get the current date/time
     struct timespec ts;
@@ -72,7 +63,7 @@ void * signalWriterThread(void * dummy) {
     while(1) 
     {
         writeSignalBufferToMATFile();
-        usleep(1000*1000);
+        usleep(WRITE_INTERVAL_USEC);
     }
 
     //pthread_cleanup_pop(0);
