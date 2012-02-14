@@ -6,7 +6,7 @@
 
 #include "signal.h"
 #include "buffer.h"
-#include "serializedDataLogger.h"
+#include "signalLogger.h"
 
 pthread_mutex_t signalBufferMutex = PTHREAD_MUTEX_INITIALIZER;
 

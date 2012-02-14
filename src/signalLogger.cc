@@ -22,9 +22,14 @@
 #include "signal.h"
 #include "buffer.h"
 #include "writer.h"
+#include "signalLogger.h"
 
 #define PORT 25000 
 #define UNKNOWN_PACKET_COUNT -1
+
+// NO TRAILING SLASH!
+#define DEFAULT_DATA_ROOT "/expdata/signals"
+char dataRoot[MAX_FILENAME_LENGTH];
 
 ///////////// GLOBALS /////////////
 int sock;
@@ -45,11 +50,26 @@ void finish_main(int sig)
     exit(-1);
 }
 
+bool checkDataRootAccessible()
+{
+	// check that we have read and write access to the data root
+	return access( dataRoot, R_OK | W_OK ) != -1; 
+}
+
 int main(int argc, char *argv[])
 {
-    printf("Hello world!\n");
+	// copy the default data root in, later make this an option?
+    strncpy(dataRoot, DEFAULT_DATA_ROOT, MAX_FILENAME_LENGTH);
 
-    uint8_t rawPacket[MAX_PACKET_LENGTH];
+	printf("Signal data root : %s\n", dataRoot);
+
+	if (!checkDataRootAccessible())
+	{
+		diep("No read/write access to data root. Check permissions");
+		exit(1);
+	}
+
+	uint8_t rawPacket[MAX_PACKET_LENGTH];
     int port = PORT;
     bool receivedAll; 
 

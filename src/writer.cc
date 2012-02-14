@@ -9,56 +9,38 @@
 #include <unistd.h>
 #include <time.h>
 #include <math.h>
+#include <sys/stat.h>
 
 #include "signal.h"
 #include "buffer.h"
 #include "writer.h"
-#include "serializedDataLogger.h"
+#include "signalLogger.h"
 
-#define MAX_FILENAME_LENGTH 100
+#define WRITE_INTERVAL_USEC 100*1000 
+#define PATH_SEPARATOR "/"
 
-#define WRITE_INTERVAL_USEC = 100*1000 
+extern char dataRoot[MAX_FILENAME_LENGTH];
 
 /// PRIVATE DECLARATIONS
 
-int64_t timespec_subtract (const struct timespec *x, const struct timespec *y);
-void updateSigFile();
+void signalWriterThreadCleanup(void* dummy);
+void updateSignalFileInfo(SignalFileInfo *);
 void writeSignalBufferToMATFile();
-void writeMxArrayToSigFile(mxArray* mx);
+void writeMxArrayToSigFile(mxArray* mx, const SignalFileInfo *);
 mxArray* createMxArrayForSignals(int nSignalsExpected);
 void storeSignalInMxArray(mxArray * mxSignals, const Signal* psig, int index);
 mxClassID convertDataTypeIdToMxClassId(uint8_t dataTypeId);
-	//
-// TYPEDEFS
+void logToSignalIndexFile(const SignalFileInfo* pSigFileInfo, const char* str);
 
-typedef struct MATFileInfo {
-    char fileName[MAX_FILENAME_LENGTH];
-    MATFile* pmat;
-} MATFileInfo; 
-
-MATFileInfo sigFile;
-
+SignalFileInfo sigFileInfo;
 Signal sig;
 
-void updateSigFile() {
-    // get the current date/time
-    struct timespec ts;
-    struct tm * timeinfo;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    timeinfo = localtime(&ts.tv_sec);
-
-    int msec = (int)floor((double)ts.tv_nsec / 1000000.0);
-
-    char buffer[MAX_FILENAME_LENGTH];
-    strftime(buffer, MAX_FILENAME_LENGTH, "/home/shenoylab/code/serializedDataLogger/data/dlsignal.%Y%m%d.%H%M%S", timeinfo);
-    snprintf(sigFile.fileName, MAX_FILENAME_LENGTH, "%s.%03d.mat", buffer, msec); 
-}
-
-void * signalWriterThread(void * dummy) {
+void * signalWriterThread(void * dummy)
+{
 
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
-    //pthread_cleanup_push(closeFiles, NULL);
+    pthread_cleanup_push(signalWriterThreadCleanup, NULL);
 
     while(1) 
     {
@@ -66,9 +48,85 @@ void * signalWriterThread(void * dummy) {
         usleep(WRITE_INTERVAL_USEC);
     }
 
-    //pthread_cleanup_pop(0);
+    pthread_cleanup_pop(0);
 
     return NULL;
+}
+
+void signalWriterThreadCleanup(void* dummy) {
+    printf("SignalWriteThread: Cleaning up\n");
+    if(sigFileInfo.indexFile != NULL)
+        fclose(sigFileInfo.indexFile);
+}
+
+void updateSignalFileInfo(SignalFileInfo* pSignalFile)
+{
+    // get the current date/time
+    struct timespec ts;
+    struct tm * timeinfo;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    timeinfo = localtime(&ts.tv_sec);
+
+	// and msec within the current second (to ensure the names never collide)
+    int msec = (int)floor((double)ts.tv_nsec / 1000000.0);
+
+	// append the date as a folder onto dataRoot 
+    char parentDirBuffer[MAX_FILENAME_LENGTH];
+    strftime(parentDirBuffer, MAX_FILENAME_LENGTH, "%Y%m%d", timeinfo);
+
+    // start with the dataRoot
+    char pathBuffer[MAX_FILENAME_LENGTH];
+    snprintf(pathBuffer, MAX_FILENAME_LENGTH, 
+            "%s/%s", dataRoot, parentDirBuffer);
+    
+    // check that this data directory exists if it's changed from last time
+    if(strncmp(pathBuffer, pSignalFile->filePath, MAX_FILENAME_LENGTH) != 0)
+    {
+        // path has changed, need to check that this path exists, and/or create it
+        if (access( pathBuffer, R_OK | W_OK ) == -1) 
+        {
+            // this new path doesn't exist or we can't access it --> mkdir it
+            int failed = mkdir(pathBuffer, S_IRWXU);
+            if(failed)
+                diep("Error creating signal data directory");
+        }
+
+        // update the filePath so we don't try to create it again
+        strncpy(pSignalFile->filePath, pathBuffer, MAX_FILENAME_LENGTH);
+        printf("Signal data dir : %s\n", pSignalFile->filePath);
+
+    }
+
+    // now check the index file to make sure it exists
+    char indexFileBuffer[MAX_FILENAME_LENGTH];
+    snprintf(indexFileBuffer, MAX_FILENAME_LENGTH, 
+            "%s/index.txt", pSignalFile->filePath);
+
+    // check whether the index file is the same as last time
+    if(strncmp(indexFileBuffer, pSignalFile->indexFileName, MAX_FILENAME_LENGTH) != 0)
+    {
+        // it's changed from last time
+        strncpy(pSignalFile->indexFileName, indexFileBuffer, MAX_FILENAME_LENGTH);
+        printf("Signal index file : %s\n", pSignalFile->indexFileName);
+
+        // it's not, reopen it for appending
+        pSignalFile->indexFile = fopen(pSignalFile->indexFileName, "a");
+
+        if(pSignalFile->indexFile == NULL)
+        {
+            diep("Error opening index file.");
+        }
+    }
+    
+    // create a unique file name based on date.time.msec
+    char fileTimeBuffer[MAX_FILENAME_LENGTH];
+    strftime(fileTimeBuffer, MAX_FILENAME_LENGTH, "%Y%m%d.%H%M%S", timeinfo);
+
+    snprintf(pSignalFile->fileNameShort, MAX_FILENAME_LENGTH,
+            "signal.%s.%03d.mat", fileTimeBuffer, msec);
+
+    snprintf(pSignalFile->fileName, MAX_FILENAME_LENGTH, 
+            "%s/%s", pSignalFile->filePath, pSignalFile->fileNameShort); 
 }
 
 void writeSignalBufferToMATFile() 
@@ -101,32 +159,44 @@ void writeSignalBufferToMATFile()
         //printSignal(&sig);
     }
 
+    // write them to disk as a mat file!
     if(nSignalsWritten) {
-        updateSigFile();
-        printf("%4d signals ==> %s\n", nSignalsWritten, sigFile.fileName);
-		writeMxArrayToSigFile(mxSignals);
+        updateSignalFileInfo(&sigFileInfo);
+        printf("%4d signals ==> %s\n", nSignalsWritten, sigFileInfo.fileName);
+		writeMxArrayToSigFile(mxSignals, &sigFileInfo);
+
+        logToSignalIndexFile(&sigFileInfo, sigFileInfo.fileNameShort);
     }
 
 	mxDestroyArray(mxSignals);
 }
 
-void writeMxArrayToSigFile(mxArray* mx)
+void logToSignalIndexFile(const SignalFileInfo* pSigFileInfo, const char* str) {
+    // write the string to the index file
+    if(pSigFileInfo->indexFile == NULL)
+        diep("Index file not opened\n");
+
+    fprintf(pSigFileInfo->indexFile, "%s\n", str); 
+    fflush(pSigFileInfo->indexFile);
+}
+
+
+void writeMxArrayToSigFile(mxArray* mx, const SignalFileInfo *pSigFileInfo)
 {
 	// open the file
-	sigFile.pmat = matOpen(sigFile.fileName, "w");
+	MATFile* pmat = matOpen(pSigFileInfo->fileName, "w");
 
-	if(sigFile.pmat == NULL)
+	if(pmat == NULL)
 		diep("Error opening MAT file");
 
 	// put variable in file
-	int error = matPutVariable(sigFile.pmat, "signals", mx);
+	int error = matPutVariable(pmat, "signals", mx);
 
 	if(error)
 		diep("Error putting variable in MAT file");
 
 	// close the file
-	matClose(sigFile.pmat);
-	sigFile.pmat = NULL;
+	matClose(pmat);
 }
 
 mxArray* createMxArrayForSignals(int nSignalsExpected)

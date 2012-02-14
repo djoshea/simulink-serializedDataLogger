@@ -1,7 +1,7 @@
 # Author: Dan O'Shea dan@djoshea.com 2012
 
 # to get the options in this file, run in Matlab:
-# mex('-v', '-f', [matlabroot '/bin/matopts.sh'], '-lrt', 'serializedDataLogger.cc', 'writer.cc', 'buffer.cc', 'signal.cc')
+# mex('-v', '-f', [matlabroot '/bin/matopts.sh'], '-lrt', 'signalLogger.cc', 'writer.cc', 'buffer.cc', 'signal.cc')
 
 # update this for newer matlab versions
 MATLAB_ROOT=/usr/local/MATLAB/R2011b
@@ -21,9 +21,9 @@ BUILD_DIR=../build
 BIN_DIR=..
 
 # lists of h, cc, and o files without paths
-H_NAMES=serializedDataLogger.h buffer.h signal.h writer.h
-CC_NAMES=serializedDataLogger.cc buffer.cc signal.cc writer.cc
-O_NAMES=serializedDataLogger.o buffer.o signal.o writer.o
+H_NAMES=signalLogger.h buffer.h signal.h writer.h
+CC_NAMES=signalLogger.cc buffer.cc signal.cc writer.cc
+O_NAMES=signalLogger.o buffer.o signal.o writer.o
 
 # add file paths pointing to appropriate directories
 H_FILES=$(patsubst %,$(SRC_DIR)/%,$(H_NAMES))
@@ -31,10 +31,10 @@ CC_FILES=$(patsubst %,$(SRC_DIR)/%,$(CC_NAMES))
 O_FILES=$(patsubst %,$(BUILD_DIR)/%,$(O_NAMES))
 
 # final output
-EXECUTABLE=$(BIN_DIR)/serializedDataLogger
+EXECUTABLE=$(BIN_DIR)/signalLogger
 
 ############ TARGETS #####################
-all: serializedDataLogger
+all: signalLogger 
 
 # compile .o for each .c, depends also on all .h files
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cc $(H_FILES)
@@ -42,7 +42,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cc $(H_FILES)
 	@$(CXX) -c -o $@ $< $(CXXFLAGS) $(CXXFLAGS_MEX) 
 
 # link *.o into executable
-serializedDataLogger: $(O_FILES)
+signalLogger: $(O_FILES)
 	@echo "==> Linking $<:"
 	@$(LD) -O -o $(EXECUTABLE) $(O_FILES) $(LDFLAGS_MEX)
 	@echo "==> Built $(EXECUTABLE) successfully!"

@@ -4,7 +4,7 @@
 #include "mat.h"
 
 #include "signal.h"
-#include "serializedDataLogger.h"
+#include "signalLogger.h"
 
 // these match the data type ids defined in signal.h
 // note that "char" is actually uint8, but determines how we store it downstream
