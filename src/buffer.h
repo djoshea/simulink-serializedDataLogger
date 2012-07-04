@@ -4,9 +4,9 @@
 #include "signal.h"
 
 /* Packet maxima */
-#define PACKET_BUFFER_SIZE 200 
-#define PACKETSET_BUFFER_SIZE 5
-#define SIGNAL_BUFFER_SIZE 500
+#define PACKET_BUFFER_SIZE 2000 
+#define PACKETSET_BUFFER_SIZE 50
+#define SIGNAL_BUFFER_SIZE 20000
 
 /////////// DATA STRUCTURES //////////////
 
